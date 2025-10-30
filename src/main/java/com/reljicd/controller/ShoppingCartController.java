@@ -1,36 +1,41 @@
-package com.reljicd.service.impl;
+package com.reljicd.controller;
 
 import com.reljicd.model.Product;
 import com.reljicd.model.ShoppingCart;
-import com.reljicd.repository.ProductRepository;
-import com.reljicd.repository.ShoppingCartRepository;
 import com.reljicd.service.ShoppingCartService;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.Set;
+@Controller
+@RequestMapping("/cart")
+public class ShoppingCartController {
 
-@Service
-@Transactional
-public class ShoppingCartServiceImpl implements ShoppingCartService {
+    @Autowired
+    private ShoppingCartService shoppingCartService;
 
-    private final ShoppingCartRepository cartRepository;
-    private final ProductRepository productRepository;
-
-    public ShoppingCartServiceImpl(ShoppingCartRepository cartRepository, ProductRepository productRepository) {
-        this.cartRepository = cartRepository;
-        this.productRepository = productRepository;
+    @GetMapping
+    public String showCart(Model model) {
+        model.addAttribute("cart", shoppingCartService.getCart());
+        return "cart"; // returns cart.html or cart.jsp
     }
 
-    @Override
-    public ShoppingCart getCartById(Long id) {
-        return cartRepository.findById(id).orElse(null);
+    @PostMapping("/add/{productId}")
+    public String addProduct(@PathVariable Long productId) {
+        shoppingCartService.addProduct(productId);
+        return "redirect:/cart";
     }
 
-    @Override
-    public void saveProducts(Set<Product> products) {
-        for (Product product : products) {
-            productRepository.save(product);
-        }
+    @PostMapping("/remove/{productId}")
+    public String removeProduct(@PathVariable Long productId) {
+        shoppingCartService.removeProduct(productId);
+        return "redirect:/cart";
+    }
+
+    @PostMapping("/clear")
+    public String clearCart() {
+        shoppingCartService.clearCart();
+        return "redirect:/cart";
     }
 }
