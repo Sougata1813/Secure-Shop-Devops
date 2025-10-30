@@ -1,36 +1,35 @@
 package com.reljicd.config;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.sql.DataSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.provisioning.JdbcUserDetailsManager;
+import org.springframework.security.provisioning.UserDetailsManager;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 
-import javax.sql.DataSource;
-
-/**
- * Spring Security Configuration
- * http://docs.spring.io/spring-boot/docs/current/reference/html/howto-security.html
- * Switches off Spring Boot automatic security configuration
- *
- * @author Dusan
- */
 @Configuration
-public class SpringSecurityConfig extends WebSecurityConfigurerAdapter {
+@EnableWebSecurity
+@EnableMethodSecurity
+public class SpringSecurityConfig {
 
     private final AccessDeniedHandler accessDeniedHandler;
-
-    final DataSource dataSource;
+    private final DataSource dataSource;
 
     @Value("${spring.admin.username}")
     private String adminUsername;
 
-    @Value("${spring.admin.username}")
+    @Value("${spring.admin.password}")
     private String adminPassword;
 
     @Value("${spring.queries.users-query}")
@@ -39,67 +38,71 @@ public class SpringSecurityConfig extends WebSecurityConfigurerAdapter {
     @Value("${spring.queries.roles-query}")
     private String rolesQuery;
 
-    @Autowired
     public SpringSecurityConfig(AccessDeniedHandler accessDeniedHandler, DataSource dataSource) {
         this.accessDeniedHandler = accessDeniedHandler;
         this.dataSource = dataSource;
     }
 
     /**
-     * HTTPSecurity configurer
-     * - roles ADMIN allow to access /admin/**
-     * - roles USER allow to access /user/** and /newPost/**
-     * - anybody can visit /, /home, /about, /registration, /error, /blog/**, /post/**, /h2-console/**
-     * - every other page needs authentication
-     * - custom 403 access denied handler
+     * Security filter chain configuration (replaces WebSecurityConfigurerAdapter)
      */
-    @Override
-    protected void configure(HttpSecurity http) throws Exception {
-
-        http.csrf().disable()
-                .authorizeRequests()
-                .antMatchers("/home", "/registration", "/error", "/h2-console/**").permitAll()
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/", "/home", "/registration", "/error", "/h2-console/**", "/blog/**", "/post/**")
+                .permitAll()
                 .anyRequest().authenticated()
-                .and()
-                .formLogin()
+            )
+            .formLogin(form -> form
                 .loginPage("/login")
-                .defaultSuccessUrl("/home")
+                .defaultSuccessUrl("/home", true)
                 .permitAll()
-                .and()
-                .logout()
-                .permitAll()
-                .and()
-                .exceptionHandling().accessDeniedHandler(accessDeniedHandler)
-                // Fix for H2 console
-                .and().headers().frameOptions().disable();
-    }
+            )
+            .logout(logout -> logout.permitAll())
+            .exceptionHandling(ex -> ex.accessDeniedHandler(accessDeniedHandler))
+            .headers(headers -> headers.frameOptions(frame -> frame.disable())); // For H2 console
 
-
-    /**
-     * Authentication details
-     */
-    @Autowired
-    public void configureGlobal(AuthenticationManagerBuilder auth) throws Exception {
-
-        // Database authentication
-        auth.
-                jdbcAuthentication()
-                .usersByUsernameQuery(usersQuery)
-                .authoritiesByUsernameQuery(rolesQuery)
-                .dataSource(dataSource)
-                .passwordEncoder(passwordEncoder());
-
-        // In memory authentication
-        auth.inMemoryAuthentication()
-                .withUser(adminUsername).password(adminPassword).roles("ADMIN");
+        return http.build();
     }
 
     /**
-     * Configure and return BCrypt password encoder
+     * Password encoder bean
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * JDBC-based authentication using custom queries
+     */
+    @Bean
+    public UserDetailsManager userDetailsManager() {
+        JdbcUserDetailsManager manager = new JdbcUserDetailsManager(dataSource);
+        manager.setUsersByUsernameQuery(usersQuery);
+        manager.setAuthoritiesByUsernameQuery(rolesQuery);
+        return manager;
+    }
+
+    /**
+     * Create in-memory admin user (optional)
+     */
+    @Bean
+    public UserDetails adminUser() {
+        return User.builder()
+                .username(adminUsername)
+                .password(passwordEncoder().encode(adminPassword))
+                .roles("ADMIN")
+                .build();
+    }
+
+    /**
+     * Expose AuthenticationManager for use in other beans
+     */
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
+        return configuration.getAuthenticationManager();
+    }
 }
