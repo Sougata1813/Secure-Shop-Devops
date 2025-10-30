@@ -1,54 +1,36 @@
-package com.reljicd.controller;
+package com.reljicd.service.impl;
 
-import com.reljicd.exception.NotEnoughProductsInStockException;
-import com.reljicd.service.ProductService;
+import com.reljicd.model.Product;
+import com.reljicd.model.ShoppingCart;
+import com.reljicd.repository.ProductRepository;
+import com.reljicd.repository.ShoppingCartRepository;
 import com.reljicd.service.ShoppingCartService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.servlet.ModelAndView;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-@Controller
-public class ShoppingCartController {
+import java.util.Set;
 
-    private final ShoppingCartService shoppingCartService;
+@Service
+@Transactional
+public class ShoppingCartServiceImpl implements ShoppingCartService {
 
-    private final ProductService productService;
+    private final ShoppingCartRepository cartRepository;
+    private final ProductRepository productRepository;
 
-    @Autowired
-    public ShoppingCartController(ShoppingCartService shoppingCartService, ProductService productService) {
-        this.shoppingCartService = shoppingCartService;
-        this.productService = productService;
+    public ShoppingCartServiceImpl(ShoppingCartRepository cartRepository, ProductRepository productRepository) {
+        this.cartRepository = cartRepository;
+        this.productRepository = productRepository;
     }
 
-    @GetMapping("/shoppingCart")
-    public ModelAndView shoppingCart() {
-        ModelAndView modelAndView = new ModelAndView("/shoppingCart");
-        modelAndView.addObject("products", shoppingCartService.getProductsInCart());
-        modelAndView.addObject("total", shoppingCartService.getTotal().toString());
-        return modelAndView;
+    @Override
+    public ShoppingCart getCartById(Long id) {
+        return cartRepository.findById(id).orElse(null);
     }
 
-    @GetMapping("/shoppingCart/addProduct/{productId}")
-    public ModelAndView addProductToCart(@PathVariable("productId") Long productId) {
-        productService.findById(productId).ifPresent(shoppingCartService::addProduct);
-        return shoppingCart();
-    }
-
-    @GetMapping("/shoppingCart/removeProduct/{productId}")
-    public ModelAndView removeProductFromCart(@PathVariable("productId") Long productId) {
-        productService.findById(productId).ifPresent(shoppingCartService::removeProduct);
-        return shoppingCart();
-    }
-
-    @GetMapping("/shoppingCart/checkout")
-    public ModelAndView checkout() {
-        try {
-            shoppingCartService.checkout();
-        } catch (NotEnoughProductsInStockException e) {
-            return shoppingCart().addObject("outOfStockMessage", e.getMessage());
+    @Override
+    public void saveProducts(Set<Product> products) {
+        for (Product product : products) {
+            productRepository.save(product);
         }
-        return shoppingCart();
     }
 }
